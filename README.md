@@ -1,5 +1,5 @@
 # 🏡 Application de Réservation d’Appartements Meublés avec IA
-*Projet Web & Mobile - Architecture Microservices & Intelligence Artificielle*
+*Projet Web & Mobile - Architecture Microservices & Intelligence Artificielle *
 
 ---
 
