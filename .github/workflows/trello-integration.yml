@@ -1,55 +1,81 @@
-name: Trello & Slack Integration
+name: Trello Integration
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     types: [opened, closed]
 
 jobs:
-  update-trello-slack:
+  update-trello:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # 1. Extraction de l'ID de la carte Trello depuis le message de commit
-      - name: Extract Trello Card ID
+      # ÉTAPE 1 : Extraction sécurisée de l'ID (Correction du bug "EOF")
+      - name: Extract Trello Card ID from commit message
         id: extract
-        shell: bash
+        env:
+          # On passe le message en variable d'environnement pour éviter les bugs de guillemets
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          echo "Message du commit: $COMMIT_MSG"
-          # Cherche le format [TRELLO-XXXXX]
+          echo "Processing commit message..."
+          # Regex plus robuste pour trouver [TRELLO-XXXXX]
           CARD_ID=$(echo "$COMMIT_MSG" | grep -oP '\[TRELLO-\K[^]]+' || echo "")
-          echo "Card ID Found: $CARD_ID"
+          
+          if [ -z "$CARD_ID" ]; then
+            echo "Aucun ID Trello trouvé."
+          else
+            echo "ID trouvé : $CARD_ID"
+          fi
           echo "card_id=$CARD_ID" >> $GITHUB_OUTPUT
 
-      # 2. Ajouter un commentaire sur la carte Trello
+      # ÉTAPE 2 : Ajouter un commentaire sur la carte
       - name: Add comment to Trello card
         if: steps.extract.outputs.card_id != ''
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          curl -X POST "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}/actions/comments" \
+          curl -s -X POST "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}/actions/comments" \
             -d "key=${{ secrets.TRELLO_API_KEY }}" \
             -d "token=${{ secrets.TRELLO_TOKEN }}" \
-            --data-urlencode "text=🚀 Commit sur GitHub par ${{ github.actor }} : ${{ github.event.head_commit.message }} (Voir le commit : ${{ github.event.head_commit.url }})"
+            --data-urlencode "text=Commit poussé par ${{ github.actor }} : $COMMIT_MSG"
 
-      # 3. Déplacer la carte vers la liste "Terminé"
-      - name: Move card to Terminé
+      # ÉTAPE 3 : Cocher TOUTES les cases des checklists (Nouveau !)
+      - name: Complete all checklists items
+        if: steps.extract.outputs.card_id != ''
+        run: |
+          # 1. Récupérer les checklists de la carte
+          CHECKLISTS_JSON=$(curl -s "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}/checklists?key=${{ secrets.TRELLO_API_KEY }}&token=${{ secrets.TRELLO_TOKEN }}")
+          
+          # 2. Extraire tous les IDs des items non cochés (nécessite jq qui est installé par défaut)
+          ITEM_IDS=$(echo "$CHECKLISTS_JSON" | jq -r '.[].checkItems[].id')
+          
+          # 3. Boucler sur chaque item pour le marquer "complete"
+          for ITEM_ID in $ITEM_IDS; do
+            echo "Completing item: $ITEM_ID"
+            curl -s -X PUT "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}/checkItem/$ITEM_ID" \
+              -d "key=${{ secrets.TRELLO_API_KEY }}" \
+              -d "token=${{ secrets.TRELLO_TOKEN }}" \
+              -d "state=complete" > /dev/null
+          done
+
+      # ÉTAPE 4 : Déplacer la carte et la marquer comme Terminée (Date verte)
+      - name: Move card to FINISHED and Mark Complete
         if: github.ref == 'refs/heads/main' && steps.extract.outputs.card_id != ''
         run: |
-          curl -X PUT "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}" \
+          curl -s -X PUT "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}" \
             -d "key=${{ secrets.TRELLO_API_KEY }}" \
             -d "token=${{ secrets.TRELLO_TOKEN }}" \
-            -d "idList=${{ secrets.TRELLO_LIST_EN_REVUE }}"
+            -d "idList=${{ secrets.TRELLO_LIST_EN_REVUE }}" \
+            -d "dueComplete=true"
 
-      # 4. Envoyer la notification Slack
+      # ÉTAPE 5 : Notification Slack (Seulement si tu as réussi à avoir le token, sinon supprime ce bloc)
       - name: Send Slack notification
         if: github.ref == 'refs/heads/main' && steps.extract.outputs.card_id != ''
         uses: slackapi/slack-github-action@v1.24.0
         with:
-          # Assurez-vous d'avoir créé le secret SLACK_CHANNEL_ID ou remplacez par l'ID en dur ici
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }} 
-          slack-message: "✅ La tâche Trello *<https://trello.com/c/${{ steps.extract.outputs.card_id }}|${{ steps.extract.outputs.card_id }}>* a été mise à jour et déplacée dans *Terminé* suite au commit de *${{ github.actor }}*."
+          # On ne met PAS le token ici
+          channel-id: 'C0A1XS2NF7G'   # Remplacer par ton channel ID
+          slack-message: "✅ La carte Trello <https://trello.com/c/${{ steps.extract.outputs.card_id }}|TASK> a été mise à jour, checklists complétées et déplacée !"
         env:
+          # C'est ICI qu'il faut mettre le token
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
