@@ -10,7 +10,7 @@ jobs:
   update-trello:
     runs-on: ubuntu-latest
     steps:
-      # ÉTAPE 1 : Extraction sécurisée de l'ID (Correction du bug "EOF")
+      # ÉTAPE 1 : Extraction sécurisée de l'ID 
       - name: Extract Trello Card ID from commit message
         id: extract
         env:
@@ -39,14 +39,14 @@ jobs:
             -d "token=${{ secrets.TRELLO_TOKEN }}" \
             --data-urlencode "text=Commit poussé par ${{ github.actor }} : $COMMIT_MSG"
 
-      # ÉTAPE 3 : Cocher TOUTES les cases des checklists (Nouveau !)
+      # ÉTAPE 3 : Cocher TOUTES les cases des checklists
       - name: Complete all checklists items
         if: steps.extract.outputs.card_id != ''
         run: |
           # 1. Récupérer les checklists de la carte
           CHECKLISTS_JSON=$(curl -s "https://api.trello.com/1/cards/${{ steps.extract.outputs.card_id }}/checklists?key=${{ secrets.TRELLO_API_KEY }}&token=${{ secrets.TRELLO_TOKEN }}")
           
-          # 2. Extraire tous les IDs des items non cochés (nécessite jq qui est installé par défaut)
+          # 2. Extraire tous les IDs des items non cochés 
           ITEM_IDS=$(echo "$CHECKLISTS_JSON" | jq -r '.[].checkItems[].id')
           
           # 3. Boucler sur chaque item pour le marquer "complete"
@@ -68,14 +68,12 @@ jobs:
             -d "idList=${{ secrets.TRELLO_LIST_EN_REVUE }}" \
             -d "dueComplete=true"
 
-      # ÉTAPE 5 : Notification Slack (Seulement si tu as réussi à avoir le token, sinon supprime ce bloc)
+      # ÉTAPE 5 : Notification Slack
       - name: Send Slack notification
         if: github.ref == 'refs/heads/main' && steps.extract.outputs.card_id != ''
         uses: slackapi/slack-github-action@v1.24.0
         with:
-          # On ne met PAS le token ici
-          channel-id: 'C0A1JDVGR4P'  # Remplacer par ton channel ID
+          channel-id: 'C0A1JDVGR4P'
           slack-message: "✅ La carte Trello <https://trello.com/c/${{ steps.extract.outputs.card_id }}|TASK> a été mise à jour, checklists complétées et déplacée !"
         env:
-          # C'est ICI qu'il faut mettre le token
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
