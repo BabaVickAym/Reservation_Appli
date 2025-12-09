@@ -13,7 +13,7 @@ Elle offre une expérience complète aux *propriétaires* et aux *locataires*, a
 ## 🚀 Fonctionnalités Principales
 
 ### 👤 Pour les Locataires
-- Recherche d’appartements avec filtres avancés 
+- Recherche d’appartements avec filtres avancés  
 - Réservation en ligne  
 - Paiement sécurisé  
 - Recommandations personnalisées  via IA  
